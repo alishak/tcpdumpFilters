@@ -8,11 +8,12 @@ ip2="$3"
 p1="$4"
 p2="$5"
 
-########################## Functions ##########################
+########################################### Functions ###########################################
 
 function error {
-	printf "args & usage:\n"
+	printf "ARGS & USAGE:\n"
 	printf "\tall <ip1> <ip2> <numConnections>\n"
+	printf "NOTE: The first ip should be the ip address with the first SYN flag when using the "all" option\n\n"
 	printf "\tconversation\t<ip1> <ip2>\n"
 	printf "\tconnection\t<ip1> <ip2> <p1> <p2>\n"
 	printf "\tflow\t\t<ip1> <ip2> <p1> <p2>\n\n"
@@ -50,20 +51,31 @@ function connection {
 		p2=$2
 	fi
 
+	#Create subdirectory
+	subdir="connnections"
+	if [ ! -d "$dir/$subdir" ]; then
+		mkdir $dir/$subdir
+	fi
+
 	name="connection_$ip1:$p1-$ip2:$p2"
 	createFile "$name"
-	#echo "$name"
-	/usr/sbin/tcpdump -nr lab1.pcap vlan and '((src '$ip1'  and src port '$p1' and dst '$ip2' and dst port '$p2') or (src '$ip2' and src port '$p2' and dst '$ip1' and dst port '$p1'))' > $dir/$fileName
+	/usr/sbin/tcpdump -nr lab1.pcap vlan and '((src '$ip1'  and src port '$p1' and dst '$ip2' and dst port '$p2') or (src '$ip2' and src port '$p2' and dst '$ip1' and dst port '$p1'))' > $dir/$subdir/$fileName
 }
 
 function flow {
+	#Create subdirectory
+	subdir="flows"
+	if [ ! -d "$dir/$subdir" ]; then
+		mkdir $dir/$subdir
+	fi
+
 	createFile "flow_$ip1:$p1-$ip2:$p2"
-	/usr/sbin/tcpdump -nr lab1.pcap vlan and '(src '$ip1'  and src port '$p1' and dst '$ip2' and dst port '$p2') ' > $dir/$fileName
+	/usr/sbin/tcpdump -nr lab1.pcap vlan and '(src '$ip1'  and src port '$p1' and dst '$ip2' and dst port '$p2') ' > $dir/$subdir/$fileName
 	createFile "flow_$ip2:$p2-$ip1:$p1"
-	/usr/sbin/tcpdump -nr lab1.pcap vlan and '(src '$ip2' and src port '$p2' and dst '$ip1' and dst port '$p1') ' > $dir/$fileName
+	/usr/sbin/tcpdump -nr lab1.pcap vlan and '(src '$ip2' and src port '$p2' and dst '$ip1' and dst port '$p1') ' > $dir/$subdir/$fileName
 }
 
-#################### Main script ################################
+########################################### Main script ###########################################
 
 #print full conversation to terminal
 if [ "$arg" == "print" ]; then
@@ -95,38 +107,52 @@ if [ "$arg" == "all" ]; then
 	declare -a sortedContent
 	cat $dir/$currentFile | awk '{print $3"."$5}' | cut -d "." -f 5,10 | sed 's/[.]/\ /g' | sed 's/[:]/\n/g' > $dir/temp.txt
 	readarray content < $dir/temp.txt
-	
+	rm $dir/temp.txt
+
 	let count=0
 	for i in "${content[@]}"
 	do
-		#swap ports if the first one is 80
+		#swap ports if the first one is 80 and delete 
 		if [[  $(echo "$i" | cut -d " " -f 1) -eq 80 ]]; then
-			swap=$(echo $i | awk ' { print $2" "$1} ' )
-			#echo "swap : $swap"
-			sortedContent[$count]=$swap
+			sortedContent[$count]=$(echo $i | awk ' { print $2 } ' )
 		else
-			sortedContent[$count]=$i
+			sortedContent[$count]=$(echo $i | awk ' { print $1 } ' )
 		fi
 		let count++
 	done
-
-	#printf '%s' "${content[@]}"
-	sortedContent=($(printf '%s' "${sortedContent[@]}" | sort | uniq -c | sort -n -r))
-	echo "${sortedContent[@]}"
+	#length of original
+	#echo "CONTENT is ${#content[@]}"
+	#length of sorted
+	#echo "SORTEDCONTENT is ${#sortedContent[@]}"
 	
-	#p1 and p2 are the # of convos and conns in this case, save them
+	sortedContent=($(printf '%s\n' "${sortedContent[@]}" | sort | uniq -c | sort -n -r | awk '{ print $1","$2 }'))
+	#echo "SORTEDCONTENT is ${#sortedContent[@]}"
+	echo "${sortedContent[@]}"
+
+	#p1 is the # of connections needed in this case, save it
 	numConnections=$p1
 
 	#set real ports based on sorted array and pass them as arguments
-	#TODO:
 	let i=0
 	let pair=0
 	while [ $i -lt $numConnections ]
 	do
-		if [ $sortedContent[$pair]]
+		#echo $(printf '%s' "${sortedContent[$pair]}" | cut -d "," -f 2)
+		#skip whitespace
+		if [ -z "$(printf '%s' "${sortedContent[$pair]}" | cut -d "," -f 2)" ]; then
+			let pair++
+		fi
+
+		#set ports
+		p1="$(printf '%s' "${sortedContent[$pair]}" | cut -d "," -f 2)"
+		p2=80
+		#echo "p1 is $p1............p2 is $p2"
+
+		#find all connections and flows
 		connection $p1 $p2
 		flow $p1 $p2
 		let i++
+		let pair++
 	done
 elif [ "$arg" == "conversation" ]; then
 	conversation
