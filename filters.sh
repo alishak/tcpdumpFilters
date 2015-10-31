@@ -1,6 +1,5 @@
 #!/bin/bash
 # Author: Ali ElShakankiry
-#EE593 ANTA 2015
 
 arg="$1"
 ip1="$2"
